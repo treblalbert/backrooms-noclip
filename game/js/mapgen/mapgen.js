@@ -13,10 +13,10 @@
   // ---------- arquetipos ----------
 
   // Laberinto denso con salas abiertas (Level 0, 27, 130, 483...)
-  // v10: se genera a media resolución y se escala ×2 → pasillos de 2 tiles
-  // de ancho, espaciosos (referencia Octopath).
+  // v11: se genera a 1/3 de resolución y se escala ×3 → pasillos de 3 huecos
+  // (cabe un mueble de 1 tile y quedan 2 libres).
   function genPasillos(w, h, rng, opts = {}) {
-    const hw = Math.ceil(w / 2), hh = Math.ceil(h / 2);
+    const hw = Math.ceil(w / 3), hh = Math.ceil(h / 3);
     const small = grid(hw, hh, T.PARED);
     const cw = Math.floor((hw - 1) / 2), ch = Math.floor((hh - 1) / 2);
     const seen = new Set();
@@ -39,11 +39,11 @@
       }
       if (!moved) stack.pop();
     }
-    // escala ×2 al tamaño real, con borde exterior de pared
+    // escala ×3 al tamaño real, con borde exterior de pared
     const g = grid(w, h, T.PARED);
     for (let y = 1; y < h - 1; y++)
       for (let x = 1; x < w - 1; x++)
-        g.t[y * w + x] = small.t[(y >> 1) * hw + (x >> 1)];
+        g.t[y * w + x] = small.t[((y / 3) | 0) * hw + ((x / 3) | 0)];
     // abre salas y atajos para que respire
     const salas = opts.salas ?? 8;
     for (let i = 0; i < salas; i++) {
@@ -82,10 +82,10 @@
     return g;
   }
 
-  // Túneles serpenteantes (Level 2, 268, The Hub) — v10: a media resolución
-  // escalado ×2 → túneles de 2 de ancho, espaciosos.
+  // Túneles serpenteantes (Level 2, 268, The Hub, L13) — v11: a 1/3 de
+  // resolución escalado ×3 → túneles de 3 de ancho.
   function genTuneles(w, h, rng, opts = {}) {
-    const hw = Math.ceil(w / 2), hh = Math.ceil(h / 2);
+    const hw = Math.ceil(w / 3), hh = Math.ceil(h / 3);
     const small = grid(hw, hh, T.PARED);
     let x = rng.int(2, hw - 3), y = rng.int(2, hh - 3);
     const walkers = opts.walkers ?? 5;
@@ -103,7 +103,7 @@
     const g = grid(w, h, T.PARED);
     for (let yy = 1; yy < h - 1; yy++)
       for (let xx = 1; xx < w - 1; xx++)
-        g.t[yy * w + xx] = small.t[(yy >> 1) * hw + (xx >> 1)];
+        g.t[yy * w + xx] = small.t[((yy / 3) | 0) * hw + ((xx / 3) | 0)];
     return g;
   }
 
@@ -133,13 +133,13 @@
       }
     }
     split(1, 1, w - 2, h - 2, 4);
-    // conecta habitaciones consecutivas con pasillos en L
+    // conecta habitaciones consecutivas con pasillos en L de 2 de ancho (v11)
     for (let i = 1; i < rooms.length; i++) {
       const a = rooms[i - 1], b = rooms[i];
       let x1 = Math.floor(a.x + a.w / 2), y1 = Math.floor(a.y + a.h / 2);
       const x2 = Math.floor(b.x + b.w / 2), y2 = Math.floor(b.y + b.h / 2);
-      while (x1 !== x2) { set(g, x1, y1, T.SUELO); x1 += Math.sign(x2 - x1); }
-      while (y1 !== y2) { set(g, x1, y1, T.SUELO); y1 += Math.sign(y2 - y1); }
+      while (x1 !== x2) { set(g, x1, y1, T.SUELO); set(g, x1, y1 + 1, T.SUELO); x1 += Math.sign(x2 - x1); }
+      while (y1 !== y2) { set(g, x1, y1, T.SUELO); set(g, x1 + 1, y1, T.SUELO); y1 += Math.sign(y2 - y1); }
     }
     return g;
   }

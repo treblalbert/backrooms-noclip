@@ -181,7 +181,7 @@
       const ncx = Math.max(cx, Math.min(world.player.x, cx + CH - 1));
       const ncy = Math.max(cy, Math.min(world.player.y, cy + CH - 1));
       const pd = Math.max(Math.abs(world.player.x - ncx), Math.abs(world.player.y - ncy));
-      if (pd < world.visionActual() + 3) continue;
+      if (pd < 20) continue; // nunca a la vista ni en el borde de la niebla 3D
       // sin salidas dentro del chunk
       if (world.map.exits.some((e) => e.x >= cx && e.x < cx + CH && e.y >= cy && e.y < cy + CH)) continue;
 
@@ -310,6 +310,93 @@
     });
   }
 
+  // ---------- niveles infinitos: ventana deslizante ----------
+  // El nivel nunca se acaba: cuando te acercas a un borde, la ventana se
+  // desplaza media anchura en esa dirección — el solape se conserva tal cual,
+  // lo nuevo se genera fresco y lo que queda muy atrás se descarta.
+  function desplazarVentana(sx, sy) {
+    const g = world.map.grid;
+    const W = g.w, H = g.h;
+    const shiftX = sx * Math.floor(W / 2);
+    const shiftY = sy * Math.floor(H / 2);
+    world.ventanaN = (world.ventanaN || 0) + 1;
+    const rng = RNG.create(`${world.runSeed}::${world.level.id}::ventana::${world.ventanaN}`);
+    const nuevo = MapGen.generate(world.level, rng);
+    const ng = nuevo.grid;
+    const T = MapGen.T;
+    const nExp = new Uint8Array(W * H);
+    // copia del solape: el mundo que has visto no cambia bajo tus pies
+    for (let y = 0; y < H; y++)
+      for (let x = 0; x < W; x++) {
+        const ox = x + shiftX, oy = y + shiftY;
+        if (ox >= 0 && oy >= 0 && ox < W && oy < H) {
+          ng.t[y * W + x] = g.t[oy * W + ox];
+          nExp[y * W + x] = world.explored[oy * W + ox];
+        }
+      }
+    // costura: abre pasos entre el solape y la zona fresca (franja central)
+    const abre = (x, y) => {
+      if (x > 0 && y > 0 && x < W - 1 && y < H - 1 && ng.t[y * W + x] !== T.VACIO)
+        ng.t[y * W + x] = T.SUELO;
+    };
+    if (shiftX !== 0) {
+      const sxm = Math.floor(W / 2);
+      for (let y = 2; y < H - 2; y += 4) { abre(sxm - 1, y); abre(sxm, y); abre(sxm - 1, y + 1); abre(sxm, y + 1); }
+    }
+    if (shiftY !== 0) {
+      const sym = Math.floor(H / 2);
+      for (let x = 2; x < W - 2; x += 4) { abre(x, sym - 1); abre(x, sym); abre(x + 1, sym - 1); abre(x + 1, sym); }
+    }
+    world.map.grid = ng;
+
+    // desplaza todas las coordenadas; lo que cae fuera se descarta
+    const p = world.player;
+    p.x -= shiftX; p.y -= shiftY; p.rx = p.x; p.ry = p.y;
+    const dentro = (x, y) => x >= 0 && y >= 0 && x < W && y < H;
+    for (const e of world.entities) {
+      e.x -= shiftX; e.y -= shiftY;
+      e.rx = e.x; e.ry = e.y;
+      if (!dentro(e.x, e.y)) e.viva = false;
+    }
+    world.map.items = world.map.items.filter((it) => {
+      it.x -= shiftX; it.y -= shiftY;
+      return dentro(it.x, it.y) && !it.taken;
+    });
+    world.map.props = (world.map.props || []).filter((pr) => {
+      pr.x -= shiftX; pr.y -= shiftY;
+      return dentro(pr.x, pr.y);
+    });
+    // salidas: se desplazan; las que caen fuera se recolocan LEJOS en la zona nueva
+    const dist = MapGen.bfsDist(ng, p.x, p.y);
+    const lejanos = [];
+    for (let y = 2; y < H - 2; y++)
+      for (let x = 2; x < W - 2; x++) {
+        const d = dist[y * W + x];
+        if (d > 25) lejanos.push([x, y, d]);
+      }
+    lejanos.sort((a, b) => b[2] - a[2]);
+    let li = 0;
+    for (const ex of world.map.exits) {
+      ex.x -= shiftX; ex.y -= shiftY;
+      if (!dentro(ex.x, ex.y) || dist[ex.y * W + ex.x] < 0) {
+        const spot = lejanos[(li++ * 37) % Math.max(1, lejanos.length)];
+        if (spot) { ex.x = spot[0]; ex.y = spot[1]; }
+      }
+    }
+    // la zona nueva trae algo de agua de almendras
+    if (lejanos.length) {
+      const spot = lejanos[(li * 53) % lejanos.length];
+      world.map.items.push({ x: spot[0], y: spot[1], id: 'agua_almendras' });
+    }
+
+    world.explored = nExp;
+    world.light = new Float32Array(W * H);
+    world.mapaVersion = (world.mapaVersion || 0) + 1;
+    recomputeFov();
+    recomputeDmap();
+    world.log('Los pasillos se extienden. Este lugar no tiene fin.', 'event');
+  }
+
   // ---------- FOV y pathfinding ----------
   function recomputeFov() {
     const g = world.map.grid;
@@ -326,6 +413,16 @@
   function worldStep() {
     world.turn++;
     world.turnTotal++;
+
+    // niveles infinitos: desplazar la ventana al acercarse a un borde
+    // (M debe cumplir M <= W/4 para que tras el salto de W/2 no rebote)
+    if (world.level.infinito) {
+      const M = 22, g2 = world.map.grid;
+      let sx = 0, sy = 0;
+      if (world.player.x < M) sx = -1; else if (world.player.x >= g2.w - M) sx = 1;
+      if (world.player.y < M) sy = -1; else if (world.player.y >= g2.h - M) sy = 1;
+      if (sx || sy) desplazarVentana(sx, sy);
+    }
 
     // recogida de objetos
     for (const it of world.map.items) {
@@ -407,6 +504,20 @@
       // no puedes atravesar entidades: con arma, moverte hacia ella = golpearla
       const ent = world.entities.find((e) => e.viva && e.x === nx && e.y === ny);
       if (ent) {
+        // ¿era invisible? chocar con algo en la oscuridad LO REVELA (no más "muros invisibles")
+        const idx2 = ny * world.map.grid.w + nx;
+        const visible = world.light[idx2] > 0.05 || (ent.reveladaHasta ?? -1) > world.turn;
+        if (!visible) {
+          ent.revelada = true;
+          ent.estado = 'caza';
+          ent.reveladaHasta = world.turn + 6;
+          world.log(`¡Chocas con algo en la oscuridad! ¡${ent.def.nombre} estaba ahí!`, 'danger');
+          world.sanity(-3);
+          if (window.Sfx) Sfx.cue(ent.def.glyph);
+          if (window.Effects) Effects.doShake(3, 120);
+          worldStep(); // el susto consume el turno
+          return;
+        }
         if (world.hasItem('tuberia')) {
           golpear(ent);
           worldStep();

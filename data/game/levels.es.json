@@ -7,8 +7,8 @@
   "peligro": 1,
   "bioma": "pasillos",
   "tam": [
-   68,
-   68
+   96,
+   96
   ],
   "paleta": {
    "suelo": "#7a6b3d",
@@ -70,7 +70,8 @@
    "suelo": "moqueta_humeda"
   },
   "particulas": "polvo",
-  "sonido": "hum_clasico"
+  "sonido": "hum_clasico",
+  "infinito": true
  },
  "level-1": {
   "id": "level-1",
@@ -200,8 +201,8 @@
   "peligro": 2,
   "bioma": "tuneles",
   "tam": [
-   73,
-   57
+   84,
+   66
   ],
   "paleta": {
    "suelo": "#4a3830",
@@ -393,10 +394,10 @@
   "nombre": "Level 13: «Vitrum Madness»",
   "clase": "Clase 1 · Peligro psicológico",
   "peligro": 1,
-  "bioma": "pasillos",
+  "bioma": "tuneles",
   "tam": [
-   62,
-   62
+   83,
+   69
   ],
   "paleta": {
    "suelo": "#5e6e5a",
@@ -876,8 +877,8 @@
   "peligro": 1,
   "bioma": "pasillos",
   "tam": [
-   65,
-   65
+   75,
+   75
   ],
   "paleta": {
    "suelo": "#6a5a48",
@@ -1091,10 +1092,10 @@
   "nombre": "Level 130: «The Infinite Apartments»",
   "clase": "Clase 2 · Peligroso",
   "peligro": 2,
-  "bioma": "pasillos",
+  "bioma": "oficinas",
   "tam": [
-   68,
-   62
+   64,
+   56
   ],
   "paleta": {
    "suelo": "#7a6a45",
@@ -1527,8 +1528,8 @@
   "peligro": 4,
   "bioma": "tuneles",
   "tam": [
-   73,
-   57
+   84,
+   66
   ],
   "paleta": {
    "suelo": "#3e4650",
@@ -1678,8 +1679,8 @@
   "peligro": 3,
   "bioma": "pasillos",
   "tam": [
-   62,
-   62
+   71,
+   71
   ],
   "paleta": {
    "suelo": "#4a5560",
@@ -1984,10 +1985,10 @@
   "nombre": "Level 483: «Grayscale Halls»",
   "clase": "Clase 2 · Inestable · Propiedad «Alone»",
   "peligro": 2,
-  "bioma": "pasillos",
+  "bioma": "oficinas",
   "tam": [
-   68,
-   68
+   64,
+   56
   ],
   "paleta": {
    "suelo": "#585858",
@@ -2110,8 +2111,8 @@
   "peligro": 3,
   "bioma": "pasillos",
   "tam": [
-   60,
-   60
+   69,
+   69
   ],
   "paleta": {
    "suelo": "#8a8a8a",
@@ -2300,8 +2301,8 @@
   "peligro": 5,
   "bioma": "pasillos",
   "tam": [
-   60,
-   60
+   69,
+   69
   ],
   "paleta": {
    "suelo": "#1a0a0a",
@@ -2544,8 +2545,8 @@
   "peligro": 2,
   "bioma": "tuneles",
   "tam": [
-   70,
-   57
+   81,
+   66
   ],
   "paleta": {
    "suelo": "#4a3828",

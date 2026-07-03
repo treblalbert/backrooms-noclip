@@ -520,6 +520,7 @@
       const lit = world.light[idx];
       const esSmiler = e.def.glyph === 'smiler';
       const visible = lit > 0.05 ||
+        (e.reveladaHasta ?? -1) > world.turn ||
         (esSmiler && (world.explored[idx] || Math.hypot(e.x - world.player.x, e.y - world.player.y) < 9));
       if (!visible) continue;
       (actorsAt.get(e.y) ?? actorsAt.set(e.y, []).get(e.y)).push(e);

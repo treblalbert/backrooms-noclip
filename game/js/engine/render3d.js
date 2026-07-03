@@ -6,7 +6,7 @@
   if (!window.THREE) { window.Render3D = null; return; }
 
   // ---- constantes de cámara y escena (afinables) ----
-  const CAM = { fov: 44, dy: 4.3, dz: 5.8, lookY: 0.4, lookAhead: 1.2, suavidad: 0.085, bob: 0.018 };
+  const CAM = { fov: 44, dy: 5.8, dz: 4.2, lookY: 0.4, lookAhead: 1.1, suavidad: 0.06, bob: 0.007 };
   let camRot = 0;          // rotación de cámara en pasos de 90° (0-3), tecla Q
   let camYaw = 0;          // yaw animado (radianes)
   const WALL_H = 1.2;      // altura de los muros en unidades-tile (referencia Octopath)
@@ -67,13 +67,16 @@
   }
 
   // ---------- construcción de la escena del nivel ----------
-  function disposeLevel() {
+  let lastLevelId = null;
+  let solidosCamara = [];
+  const rayo = new THREE.Raycaster();
+  function disposeLevel(keepTex) {
     if (!levelGroup) return;
     levelGroup.traverse((o) => {
       if (o.geometry) o.geometry.dispose();
       if (o.material) {
         const mats = Array.isArray(o.material) ? o.material : [o.material];
-        for (const m of mats) { if (m.map) m.map.dispose(); m.dispose(); }
+        for (const m of mats) { if (!keepTex && m.map) m.map.dispose(); m.dispose(); }
       }
     });
     scene.remove(levelGroup);
@@ -81,7 +84,7 @@
     entitySprites.clear();
     itemSprites.clear();
     playerSprite = null;
-    texCache.clear();
+    if (!keepTex) texCache.clear(); // rebuilds del mismo nivel reutilizan texturas (sin hitch)
   }
 
   function quad(pos, uv, idx, corners, uvRect) {
@@ -93,7 +96,8 @@
   }
 
   function buildLevel(world) {
-    disposeLevel();
+    disposeLevel(lastLevelId === world.level.id);
+    lastLevelId = world.level.id;
     const g = world.map.grid;
     const T = MapGen.T;
     const tiles = world.tiles;
@@ -163,8 +167,10 @@
       const caraSolo = document.createElement('canvas');
       caraSolo.width = 48; caraSolo.height = 48;
       caraSolo.getContext('2d').drawImage(tiles.caraFull[1], 0, Tiles.RF, 48, Tiles.FH, 0, 0, 48, 48);
-      levelGroup.add(mkMesh(sidePos, sideUv, sideIdx, caraSolo, 'muro-lado', true));
-      levelGroup.add(mkMesh(topPos, topUv, topIdx, tiles.techo, 'muro-techo', false));
+      const lados = mkMesh(sidePos, sideUv, sideIdx, caraSolo, 'muro-lado', true);
+      const techos = mkMesh(topPos, topUv, topIdx, tiles.techo, 'muro-techo', false);
+      levelGroup.add(lados, techos);
+      solidosCamara = [lados, techos]; // para la colisión de la cámara
     } else {
       // bosque/exterior: árboles y rocas como billboards verticales
       const canvas = tiles.wallStyle === 'arbol' ? tiles.arbol : tiles.roca;
@@ -183,11 +189,11 @@
     // --- salidas ---
     const PEGADAS = new Set(['puerta', 'ventana']);
     const RITUAL_PARED = new Set(['reloj', 'vending', 'boton']);
-    for (const ex of world.map.exits) {
+    world.map.exits.forEach((ex, exI) => {
       const paredNorte = esWall(ex.x, ex.y - 1) && tiles.wallStyle === 'tabique';
       const c = Render.exitToCanvas(ex.def);
       const estilo = ex.def.ritual ? 'ritual' : Render.exitStyle(ex.def);
-      const t2 = tex(c);
+      const t2 = tex(c, 'exit-' + exI);
       if (estilo === 'trampilla' || estilo === 'escalera') {
         // plano tumbado sobre el suelo
         const m = new THREE.Mesh(
@@ -206,24 +212,75 @@
         );
         m.position.set(ex.x + 0.5, 0.7, ex.y + 0.045);
         levelGroup.add(m);
-      } else {
+      } else if (ex.def.ritual === 'nave') {
+        // pedestal 3D con la nave encima
+        const ped = new THREE.Mesh(
+          new THREE.BoxGeometry(0.5, 0.6, 0.5),
+          new THREE.MeshLambertMaterial({ color: 0x6a6a72 })
+        );
+        ped.position.set(ex.x + 0.5, 0.3, ex.y + 0.5);
+        ped.castShadow = true;
+        levelGroup.add(ped);
         const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: t2, transparent: true }));
-        s.scale.set(1, 1.5, 1);
-        s.position.set(ex.x + 0.5, 0.72, ex.y + 0.5);
+        s.scale.set(0.8, 1.2, 1);
+        s.position.set(ex.x + 0.5, 0.95, ex.y + 0.5);
         levelGroup.add(s);
+      } else {
+        // puerta/objeto exento: caja fina con profundidad real
+        const frente = new THREE.MeshBasicMaterial({ map: t2, transparent: true });
+        const lado = new THREE.MeshLambertMaterial({ color: 0x2a2620 });
+        const m = new THREE.Mesh(
+          new THREE.BoxGeometry(0.95, 1.42, 0.1),
+          [lado, lado, lado, lado, frente, frente]
+        );
+        m.position.set(ex.x + 0.5, 0.71, ex.y + 0.5);
+        m.castShadow = true;
+        levelGroup.add(m);
       }
-    }
+    });
 
-    // --- props (los muebles de pared, arrimados a su muro) ---
+    // --- props: muebles como GEOMETRÍA 3D empotrada, no sprays 2D ---
     const PROPS_PARED = new Set(['taquilla', 'archivador', 'nevera', 'reloj', 'camilla']);
+    const CAJAS = new Set(['cofre', 'caja', 'bidon']);
+    const LADO_COLOR = {
+      taquilla: 0x46525c, archivador: 0x625c4e, nevera: 0xa8b0ac, camilla: 0x7e8882,
+      reloj: 0x4e3d2b, cofre: 0x5e4830, caja: 0x6e5434, bidon: 0x324a3e,
+    };
     for (const pr of world.map.props || []) {
       const c = Render.propToCanvas(pr.id);
-      const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex(c, 'prop-' + pr.id), transparent: true }));
-      s.scale.set(1, 1.5, 1);
+      const frontTex = tex(c, 'prop-' + pr.id);
       const arrimado = PROPS_PARED.has(pr.id) && esWall(pr.x, pr.y - 1);
-      s.position.set(pr.x + 0.5, 0.62, pr.y + (arrimado ? 0.24 : 0.5));
-      levelGroup.add(s);
-      pr._mesh3d = s;
+      if (arrimado) {
+        // mueble EMPOTRADO contra el muro: caja con la cara frontal texturizada
+        const frente = new THREE.MeshLambertMaterial({ map: frontTex, transparent: true });
+        const lado = new THREE.MeshLambertMaterial({ color: LADO_COLOR[pr.id] ?? 0x555550 });
+        const m = new THREE.Mesh(
+          new THREE.BoxGeometry(0.66, 1.12, 0.3),
+          [lado, lado, lado, lado, frente, lado]
+        );
+        m.position.set(pr.x + 0.5, 0.56, pr.y + 0.17);
+        m.castShadow = true;
+        levelGroup.add(m);
+        pr._mesh3d = m;
+      } else if (CAJAS.has(pr.id)) {
+        // cajas/cofres/bidones exentos: volumen pequeño
+        const frente = new THREE.MeshLambertMaterial({ map: frontTex, transparent: true });
+        const lado = new THREE.MeshLambertMaterial({ color: LADO_COLOR[pr.id] ?? 0x6e5434 });
+        const m = new THREE.Mesh(
+          new THREE.BoxGeometry(0.55, 0.62, 0.45),
+          [lado, lado, lado, lado, frente, lado]
+        );
+        m.position.set(pr.x + 0.5, 0.31, pr.y + 0.5);
+        m.castShadow = true;
+        levelGroup.add(m);
+        pr._mesh3d = m;
+      } else {
+        const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: frontTex, transparent: true }));
+        s.scale.set(1, 1.5, 1);
+        s.position.set(pr.x + 0.5, 0.62, pr.y + 0.5);
+        levelGroup.add(s);
+        pr._mesh3d = s;
+      }
     }
 
     // --- objetos del suelo ---
@@ -231,8 +288,8 @@
       const it = world.map.items[i];
       const c = Render.itemToCanvas(it.id, world.data.objects);
       const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex(c, 'item-' + it.id), transparent: true }));
-      s.scale.set(0.7, 0.76, 1);
-      s.position.set(it.x + 0.5, 0.32, it.y + 0.5);
+      s.scale.set(0.55, 0.6, 1);
+      s.position.set(it.x + 0.5, 0.22, it.y + 0.5);
       levelGroup.add(s);
       itemSprites.set(i, s);
     }
@@ -252,9 +309,12 @@
     plight.color = new THREE.Color(pal.luz);
     plight.distance = (world.visionActual() + 3) * 1.6;
 
-    // posición inicial de cámara sin lerp
+    if (tiles.wallStyle !== 'tabique') solidosCamara = [];
+
+    // posición inicial de cámara y punto de mira sin lerp (evita barridos raros)
     const p = world.player;
     camera.position.set(p.rx + 0.5, CAM.dy, p.ry + 0.5 + CAM.dz);
+    frame._look = new THREE.Vector3(p.rx + 0.5, CAM.lookY, p.ry + 0.5);
   }
 
   function spriteTex(glyph, frame) {
@@ -277,6 +337,7 @@
     const lit = world.light[idx];
     const esSmiler = e.def.glyph === 'smiler';
     return lit > 0.05 ||
+      (e.reveladaHasta ?? -1) > world.turn || // revelada al chocar en la oscuridad
       (esSmiler && (world.explored[idx] || Math.hypot(e.x - world.player.x, e.y - world.player.y) < 9));
   }
 
@@ -385,12 +446,52 @@
     camYaw += dyaw * 0.1;
     const ox = Math.sin(camYaw) * CAM.dz;
     const oz = Math.cos(camYaw) * CAM.dz;
-    const target = new THREE.Vector3(px + ox, CAM.dy + bob, pz + oz);
+    let target = new THREE.Vector3(px + ox, CAM.dy + bob, pz + oz);
+    // colisión de cámara: si un muro se interpone entre el jugador y la cámara,
+    // la cámara se acerca hasta quedar delante (nunca tapa al jugador)
+    if (solidosCamara.length) {
+      // el rayo protege la visión de los PIES del jugador (lo primero que tapan los muros)
+      const desde = new THREE.Vector3(px, 0.22, pz);
+      const hacia = target.clone().sub(desde);
+      const dist = hacia.length();
+      rayo.set(desde, hacia.normalize());
+      rayo.far = dist;
+      const hits = rayo.intersectObjects(solidosCamara, false);
+      if (hits.length && hits[0].distance < dist - 0.3) {
+        if (hits[0].distance > 2.4) {
+          // hay hueco: acercar la cámara hasta quedar delante del muro
+          target = desde.clone().add(hacia.multiplyScalar(hits[0].distance - 0.35));
+          target.y = Math.max(target.y, 2.4);
+        } else {
+          // el muro está encima del jugador: cámara casi cenital sobre él
+          target = new THREE.Vector3(
+            px + Math.sin(camYaw) * 1.2, 6.2, pz + Math.cos(camYaw) * 1.2
+          );
+        }
+      }
+    }
     camera.position.lerp(target, CAM.suavidad);
-    camera.lookAt(px - Math.sin(camYaw) * CAM.lookAhead, CAM.lookY, pz - Math.cos(camYaw) * CAM.lookAhead);
+    // el punto de mira también con inercia: sin micro-tirones por paso
+    frame._look = frame._look || new THREE.Vector3(px, CAM.lookY, pz);
+    frame._look.lerp(
+      new THREE.Vector3(px - Math.sin(camYaw) * CAM.lookAhead, CAM.lookY, pz - Math.cos(camYaw) * CAM.lookAhead),
+      0.09
+    );
+    camera.lookAt(frame._look);
 
     renderer.render(scene, camera);
     drawOverlay(world, t);
+
+    if (window.DEBUG3D_ON) {
+      window.DEBUG3D = {
+        cam: camera.position.toArray().map((v) => +v.toFixed(2)),
+        look: frame._look ? frame._look.toArray().map((v) => +v.toFixed(2)) : null,
+        player: [px.toFixed(1), pz.toFixed(1)],
+        solidos: solidosCamara.length,
+        yaw: +camYaw.toFixed(2),
+      };
+      document.title = JSON.stringify(window.DEBUG3D);
+    }
   }
 
   function project(wx, wy) {

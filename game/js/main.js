@@ -99,6 +99,8 @@
   const btnSndTitle = document.getElementById('btn-sound-menu-title');
   if (btnSndTitle) btnSndTitle.onclick = abrirSndMenu;
 
+  const autocam = { prev: null, n: 0 };
+
   document.addEventListener('keydown', (ev) => {
     if (ev.code === 'KeyM') {
       const m = Sfx.toggleMute();
@@ -109,8 +111,9 @@
     if (document.getElementById('screen-card').style.display !== 'none') return;
     if (KEYS[ev.code]) {
       ev.preventDefault();
-      let [dx, dy] = KEYS[ev.code];
-      // con la cámara rotada (Q), las flechas son relativas a la pantalla
+      const [sdx, sdy] = KEYS[ev.code]; // dirección de PANTALLA pulsada
+      let dx = sdx, dy = sdy;
+      // con la cámara rotada, las flechas son relativas a la pantalla
       if (use3D && Render3D.rot) {
         const th = -Render3D.rot * Math.PI / 2;
         const rx = Math.round(Math.cos(th) * dx - Math.sin(th) * dy);
@@ -118,8 +121,25 @@
         dx = rx; dy = ry;
       }
       Game.tryMove(dx, dy);
+      // AUTO-CÁMARA: 2 pasos seguidos en una dirección lateral/atrás → la cámara
+      // gira sola para poner esa dirección "arriba" (sin machacar Q/E)
+      if (use3D) {
+        const clave = sdx + ',' + sdy;
+        if (autocam.prev === clave) autocam.n++;
+        else { autocam.prev = clave; autocam.n = 1; }
+        if (autocam.n >= 2 && !(sdx === 0 && sdy === -1)) {
+          if (sdx === 1) Render3D.rotar(-1);
+          else if (sdx === -1) Render3D.rotar(1);
+          else Render3D.rotar(2);
+          autocam.prev = null;
+          autocam.n = 0;
+        }
+      }
     } else if (ev.code === 'KeyQ' || ev.code === 'KeyE') {
-      if (use3D) Render3D.rotar(ev.code === 'KeyQ' ? 1 : -1);
+      if (use3D) {
+        Render3D.rotar(ev.code === 'KeyQ' ? 1 : -1);
+        autocam.prev = null; autocam.n = 0;
+      }
     } else if (ev.code === 'Space') {
       ev.preventDefault();
       Game.interact();
@@ -183,6 +203,7 @@
   // ---------- arranque rápido por URL: ?seed=foo&autostart=1&nivel=level-14 ----------
   const params = new URLSearchParams(location.search);
   if (params.get('nofx')) window.NOFX = true;
+  if (params.get('debug3d')) window.DEBUG3D_ON = true;
   if ((params.get('autostart') || params.get('selftest')) && !Game.Profiles.activeName())
     Game.Profiles.create('Errante');
   if (params.get('autostart')) {
@@ -238,6 +259,7 @@
             errores,
             erroresRender: window.__renderErrors || [],
             remodel: window.__remodelResultado || null,
+            ventanas: world.ventanaN || 0,
           });
           document.body.appendChild(div);
           document.title = errores.length ? 'SELFTEST-ERRORES' : 'SELFTEST-OK';
@@ -256,6 +278,13 @@
           return;
         }
         if (world.busy) return; // dado en marcha
+        // marcha forzada hacia el este serpenteando (prueba de niveles infinitos)
+        if (params.get('marcha')) {
+          const r = Math.random();
+          Game.tryMove(r < 0.5 ? 1 : 0, r < 0.5 ? 0 : (r < 0.75 ? -1 : 1));
+          acciones++;
+          return;
+        }
         // con arma: ataca a la entidad adyacente si la hay
         if (params.get('arma')) {
           const adj = world.entities.find((e) => e.viva &&
