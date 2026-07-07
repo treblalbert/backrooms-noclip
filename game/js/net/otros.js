@@ -122,17 +122,22 @@
     ctx.globalAlpha = 1;
   }
 
+  const RADIO_SOCIAL = 13; // casillas: los nombres se leen solo de cerca
+
   function overlay(ctx, proj, world, t) {
     frame();
+    const p = world?.player;
     for (const o of porId.values()) {
       if (o.escondido) continue; // dentro de una taquilla no hay nombre que leer
       const [sx, sy] = proj(o.rx, o.ry);
       if (sx < -80 || sy < -80 || sx > ctx.canvas.width + 80 || sy > ctx.canvas.height + 80) continue;
-      nombre(ctx, sx, sy, o.nombre);
+      // capa social de PROXIMIDAD: de lejos ves una figura, no sabes quién es
+      const cercano = p && Math.hypot(o.rx - p.rx, o.ry - p.ry) <= RADIO_SOCIAL;
+      if (cercano) nombre(ctx, sx, sy, o.nombre);
       if (o.chat) {
         const k = (t - o.chatT) / CHAT_DUR;
         if (k >= 1) o.chat = null;
-        else burbuja(ctx, sx, sy, o.chat, k);
+        else if (cercano) burbuja(ctx, sx, sy, o.chat, k);
       }
     }
     // tu propio mensaje, sobre tu cabeza

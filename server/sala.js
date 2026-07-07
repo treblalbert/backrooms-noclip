@@ -342,7 +342,14 @@ class Sala {
       return;
     }
     jug.ultChat = ahora;
-    this.difundir({ t: 'chat', id: jug.id, txt });
+    // chat de PROXIMIDAD: solo lo oye quien está a ≤14 casillas del que habla
+    // (ni siquiera viaja por la red a los demás — nada de espiar el tráfico)
+    const raw = JSON.stringify({ t: 'chat', id: jug.id, txt });
+    for (const j of this.jugadores.values()) {
+      if (j.ws.readyState !== 1) continue;
+      if (j.id !== jug.id && Math.hypot(j.x - jug.x, j.y - jug.y) > P.RADIO_CHAT) continue;
+      j.ws.send(raw);
+    }
   }
 
   girar(jug, rot) {
