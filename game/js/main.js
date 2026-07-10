@@ -73,7 +73,13 @@
     chat: 12
   },
   cursorSpeed: 8, dado: true,
-  camaraModo: 'libre', camaraInvertir: false, camaraSens: 100 };
+  // en táctil el arrastre se siente invertido respecto al ratón en PC (el
+  // gesto natural es "arrastro el mundo", no "muevo la mirada"); por defecto
+  // solo la primera vez — si el jugador ya guardó una preferencia (incluso
+  // desactivándolo a mano), storedOpts la pisa más abajo
+  camaraModo: 'libre',
+  camaraInvertir: !!(window.matchMedia && matchMedia('(pointer: coarse)').matches),
+  camaraSens: 100 };
   try { 
     const storedOpts = JSON.parse(localStorage.getItem('backrooms-opts')) || {};
     if (storedOpts.gamepadMap) {
@@ -147,6 +153,25 @@
     if (world.level && !world.over &&
         document.getElementById('exit-modal').style.display === 'none' &&
         document.getElementById('dice-overlay').style.display === 'none') world.busy = false;
+  }
+  // ESC: cierra lo que esté abierto; si no hay nada, abre/cierra Ajustes.
+  // La comparte el teclado (online y offline) y el botón táctil #btn-esc
+  // (no hay tecla ESC física en móvil).
+  function simularEscape() {
+    if (document.pointerLockElement) { document.exitPointerLock(); return; }
+    if (Minimap.visible) Minimap.toggleBig(false);
+    else if (document.getElementById('backpack-panel').style.display !== 'none') world.ui.toggleBackpack(false);
+    else if (sndMenu.style.display !== 'none') cerrarSndMenu();
+    else abrirSndMenu();
+  }
+  const btnEsc = document.getElementById('btn-esc');
+  if (btnEsc) {
+    btnEsc.addEventListener('pointerdown', (ev) => {
+      ev.preventDefault();
+      Sfx.unlock();
+      simularEscape();
+    }, { passive: false });
+    if (window.Icons) Icons.set(btnEsc, 'engranaje', 15);
   }
   for (const [id, canal] of SND) {
     const s = document.getElementById(id);
@@ -296,7 +321,7 @@
         arrastre = null;
         wrap.classList.remove('orbitando');
         teclas.clear();
-        tactilDirs.clear();
+        window.joyDx = 0; window.joyDy = 0;
         if (world.online && window.Net) Net.parar();
       }
     });
@@ -551,15 +576,39 @@
   // v22: conjunto de teclas de movimiento PULSADAS (keydown/keyup); el vector
   // de input se calcula en cada frame del bucle — movimiento libre y suave
   const teclas = new Set();
-  const tactilDirs = new Set();
   document.addEventListener('keyup', (ev) => teclas.delete(ev.code));
   window.addEventListener('blur', () => {
     teclas.clear();
-    tactilDirs.clear();
+    window.joyDx = 0; window.joyDy = 0;
     if (world.online && window.Net) Net.parar();
   });
 
   let lastStepT = 0; // mantener pulsado = velocidad CONSTANTE (v16)
+  // tiempos mínimos entre pasos offline (teclado Y joystick táctil comparten
+  // lastStepT/estas constantes para no poder ir más rápido combinando ambos)
+  const autoRepeatTime2DMove = 150;
+  const autoRepeatTime3DYMove = 150;
+  const autoRepeatTime3DXMove = 600;
+  // un paso offline (por turnos): en 3ª persona W/S avanzan/retroceden y A/D
+  // giran; en 2D/cámara alta es un desplazamiento de 1 casilla en pantalla.
+  // La comparte el teclado (keydown) y el joystick táctil (loop, ver abajo).
+  function pasoOffline(sdx, sdy, tercera) {
+    if (tercera) {
+      if (sdy === -1) Game.avanzar(1);
+      else if (sdy === 1) Game.avanzar(-1);
+      else Game.girar(sdx);
+    } else {
+      let dx = sdx, dy = sdy;
+      // con la cámara rotada, las flechas son relativas a la pantalla
+      if (use3D && Render3D.rot) {
+        const th = -Render3D.rot * Math.PI / 2;
+        const rx = Math.round(Math.cos(th) * dx - Math.sin(th) * dy);
+        const ry = Math.round(Math.sin(th) * dx + Math.cos(th) * dy);
+        dx = rx; dy = ry;
+      }
+      Game.tryMove(dx, dy);
+    }
+  }
   document.addEventListener('keydown', (ev) => {
     if (!world.level || world.over) return;
     if (document.getElementById('screen-card').style.display !== 'none') return;
@@ -593,18 +642,11 @@
       else if (ev.code === 'KeyM' || ev.code === 'KeyN') { if (document.pointerLockElement) document.exitPointerLock(); Minimap.toggleBig(); }
       else if (ev.code === 'Escape') {
         if (ev.repeat) return;
-        if (document.pointerLockElement) { document.exitPointerLock(); return; }
-        if (Minimap.visible) Minimap.toggleBig(false);
-        else if (document.getElementById('backpack-panel').style.display !== 'none') world.ui.toggleBackpack(false);
-        else if (sndMenu.style.display !== 'none') cerrarSndMenu();
-        else abrirSndMenu();
+        simularEscape();
       }
       // (X=esperar no aplica online: el mundo ya no espera por nadie)
       return;
     }
-    const autoRepeatTime2DMove = 150; // tiempo en ms mínimo entre pasos al mantener pulsada una tecla de movimiento en modo 2D
-    const autoRepeatTime3DYMove = 150; // tiempo en ms mínimo entre pasos al mantener pulsada una tecla de movimiento vertical en modo 3D
-    const autoRepeatTime3DXMove = 600; // tiempo en ms mínimo entre pasos al mantener pulsada una tecla de movimiento horizontal en modo 3D
     if (KEYS[ev.code]) {
       ev.preventDefault();
       const [sdx, sdy] = KEYS[ev.code]; // dirección de PANTALLA pulsada
@@ -625,22 +667,7 @@
         }
       }
       lastStepT = performance.now();
-      if (tercera) {
-        // 3ª persona: W avanza, S retrocede, A/D giran al personaje (gratis)
-        if (sdy === -1) Game.avanzar(1);
-        else if (sdy === 1) Game.avanzar(-1);
-        else Game.girar(sdx);
-      } else {
-        let dx = sdx, dy = sdy;
-        // con la cámara rotada, las flechas son relativas a la pantalla
-        if (use3D && Render3D.rot) {
-          const th = -Render3D.rot * Math.PI / 2;
-          const rx = Math.round(Math.cos(th) * dx - Math.sin(th) * dy);
-          const ry = Math.round(Math.sin(th) * dx + Math.cos(th) * dy);
-          dx = rx; dy = ry;
-        }
-        Game.tryMove(dx, dy);
-      }
+      pasoOffline(sdx, sdy, tercera);
     } else if (ev.code === 'KeyQ' || ev.code === 'KeyE') {
       // v19: Q usa la mano izquierda, E la derecha (en ?cam=alta rotan la cámara)
       if (tercera || !use3D) {
@@ -659,17 +686,28 @@
     else if (ev.code === 'KeyJ') world.ui.toggleJournal();
     else if (ev.code === 'KeyC') world.ui.toggleCodex();
     else if (ev.code === 'KeyM' || ev.code === 'KeyN') Minimap.toggleBig();
-    else if (ev.code === 'Escape') {
-      // ESC: cierra lo que esté abierto; si no hay nada, abre/cierra Ajustes
-      if (Minimap.visible) Minimap.toggleBig(false);
-      else if (document.getElementById('backpack-panel').style.display !== 'none') world.ui.toggleBackpack(false);
-      else if (sndMenu.style.display !== 'none') cerrarSndMenu();
-      else abrirSndMenu();
-    } else if (/^Digit[1-6]$/.test(ev.code)) Game.useItem(parseInt(ev.code.slice(5), 10) - 1);
+    else if (ev.code === 'Escape') simularEscape();
+    else if (/^Digit[1-6]$/.test(ev.code)) Game.useItem(parseInt(ev.code.slice(5), 10) - 1);
   });
 
   // ---------- bucle de animación (y, online, también el input continuo) ----------
   function lerp(a, b, f) { return a + (b - a) * f; }
+
+  // castea el vector de input combinado (teclado + gamepad + joystick) a una
+  // de las 8 direcciones cardinales/diagonales por ÁNGULO, no por eje: con
+  // Math.sign() por separado, cualquier deriva mínima en un eje (arrastrar
+  // el joystick o el stick de un mando casi nunca cae EXACTO en vertical/
+  // horizontal) se redondeaba a ±1 completo en ese eje también → "adelante"
+  // con un pelín de lateral acababa siendo diagonal completa y el personaje
+  // miraba de lado. Además normaliza (cos/sin) en vez de sumar ±1 crudos,
+  // así la diagonal no queda más rápida que un cardinal (√2).
+  function snap8(x, y) {
+    if (Math.hypot(x, y) < 0.15) return [0, 0];
+    const paso = Math.PI / 4;
+    const ang = Math.round(Math.atan2(y, x) / paso) * paso;
+    const r = (v) => Math.round(v * 1000) / 1000;
+    return [r(Math.cos(ang)), r(Math.sin(ang))];
+  }
 
   // (la velocidad de giro online vive en Fisica.GIRO_JUGADOR: cliente y
   // servidor DEBEN integrar el rumbo con la misma constante)
@@ -970,12 +1008,13 @@
         !(Net.chatAbierto && Net.chatAbierto()) &&
         document.getElementById('screen-card').style.display === 'none') {
       // suma de las teclas pulsadas en coordenadas de PANTALLA
-      let sx = window.gamepadDx || 0, sy = window.gamepadDy || 0;
-      for (const code of new Set([...teclas, ...tactilDirs])) {
+      let sx = (window.gamepadDx || 0) + (window.joyDx || 0);
+      let sy = (window.gamepadDy || 0) + (window.joyDy || 0);
+      for (const code of teclas) {
         const v = KEYS[code];
         if (v) { sx += v[0]; sy += v[1]; }
       }
-      sx = Math.sign(sx); sy = Math.sign(sy);
+      [sx, sy] = snap8(sx, sy);
       const tercera = use3D && Render3D.modo === 'tercera';
       if (tercera) {
         // v25 — estilo Roblox: WASD mueve RELATIVO A LA CÁMARA (adelante/
@@ -1414,13 +1453,30 @@
         });
       }
     }
+    // online = joystick (movimiento libre, el vector continuo encaja bien);
+    // offline por turnos = D-pad (cada toque es un paso/giro YA, sin la
+    // espera del auto-repeat, que se sentía poco fluido al girar sostenido).
+    // El flujo NORMAL (botón Start del título) siempre conecta al servidor
+    // (Net.iniciar en conectarAlServidor) — offline SOLO existe vía
+    // ?autostart=1, que es la única señal fiable en el momento de montar
+    // estos controles (world.online aún no se sabe: se fija async al
+    // recibir 'bienvenida' del servidor, después de que esto se ejecuta).
+    if (capaTactil && params.get('autostart')) capaTactil.classList.add('modo-dpad');
   }
-  const touchDir = {
-    up: ['KeyW', [0, -1]],
-    down: ['KeyS', [0, 1]],
-    left: ['KeyA', [-1, 0]],
-    right: ['KeyD', [1, 0]],
-  };
+  // ---------- D-pad táctil (offline por turnos) ----------
+  document.querySelectorAll('#touch-dpad [data-dir]').forEach((btn) => {
+    const dir = btn.dataset.dir;
+    const [sdx, sdy] = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] }[dir];
+    btn.addEventListener('pointerdown', (ev) => {
+      ev.preventDefault();
+      if (!world.level || world.over) return;
+      if (document.getElementById('screen-card').style.display !== 'none') return;
+      Sfx.unlock();
+      const tercera = use3D && Render3D.modo === 'tercera';
+      pasoOffline(sdx, sdy, tercera);
+      lastStepT = performance.now(); // que el auto-repeat del teclado no vaya el doble de rápido justo después
+    }, { passive: false });
+  });
   const touch = {
     act: () => world.online ? Net.accion() : Game.interact(),
     q: () => { world.online ? Net.usar(0) : Game.usarMano(0); world.ui.pulsarMano(0); },
@@ -1428,32 +1484,61 @@
     bag: () => world.ui.toggleBackpack(),
     map: () => Minimap.toggleBig(),
   };
-  function soltarDireccionTactil(k) {
-    const dir = touchDir[k];
-    if (!dir) return;
-    tactilDirs.delete(dir[0]);
-    if (world.online && window.Net && !tactilDirs.size) Net.parar();
-  }
   document.querySelectorAll('[data-touch]').forEach((btn) => {
     const k = btn.dataset.touch;
-    const start = (ev) => {
+    btn.addEventListener('pointerdown', (ev) => {
       ev.preventDefault();
       Sfx.unlock();
-      const dir = touchDir[k];
-      if (dir) {
-        if (world.online) tactilDirs.add(dir[0]);
-        else Game.tryMove(dir[1][0], dir[1][1]);
-        return;
-      }
       touch[k]?.();
-    };
-    const stop = () => {
-      soltarDireccionTactil(k);
-    };
-    btn.addEventListener('pointerdown', start, { passive: false });
-    btn.addEventListener('pointerup', stop);
-    btn.addEventListener('pointercancel', stop);
-    btn.addEventListener('pointerleave', stop);
+    }, { passive: false });
   });
+
+  // ---------- joystick táctil de movimiento ----------
+  // online: alimenta window.joyDx/joyDy (analógico, se suma al vector de
+  // input del bucle igual que el gamepad, ver loop()); offline (por turnos):
+  // un paso discreto por eje dominante, mismo ritmo que el auto-repeat de
+  // teclado (también en loop(), pasoOffline() comparte lógica con keydown).
+  window.joyDx = 0;
+  window.joyDy = 0;
+  {
+    const baseEl = document.querySelector('#touch-joystick .joy-base');
+    const stickEl = document.querySelector('#touch-joystick .joy-stick');
+    let joyPointerId = null;
+    const mover = (ev) => {
+      const r = baseEl.getBoundingClientRect();
+      const max = r.width / 2;
+      let dx = ev.clientX - (r.left + max), dy = ev.clientY - (r.top + max);
+      const dist = Math.hypot(dx, dy);
+      if (dist > max) { dx = dx / dist * max; dy = dy / dist * max; }
+      window.joyDx = dx / max;
+      window.joyDy = dy / max;
+      if (stickEl) stickEl.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
+    };
+    const soltar = (ev) => {
+      if (ev.pointerId !== joyPointerId) return;
+      joyPointerId = null;
+      window.joyDx = 0; window.joyDy = 0;
+      if (stickEl) stickEl.style.transform = 'translate(-50%, -50%)';
+      if (baseEl) baseEl.classList.remove('activo');
+      if (world.online && window.Net) Net.parar();
+    };
+    if (baseEl) {
+      baseEl.addEventListener('pointerdown', (ev) => {
+        ev.preventDefault();
+        Sfx.unlock();
+        joyPointerId = ev.pointerId;
+        try { baseEl.setPointerCapture(joyPointerId); } catch (e) {}
+        baseEl.classList.add('activo');
+        mover(ev);
+      }, { passive: false });
+      baseEl.addEventListener('pointermove', (ev) => {
+        if (ev.pointerId !== joyPointerId) return;
+        ev.preventDefault();
+        mover(ev);
+      }, { passive: false });
+      baseEl.addEventListener('pointerup', soltar);
+      baseEl.addEventListener('pointercancel', soltar);
+    }
+  }
   refreshTitle();
 })();

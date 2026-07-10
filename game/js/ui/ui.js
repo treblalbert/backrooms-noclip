@@ -12,6 +12,11 @@
 
   function show(name) {
     if (name !== 'end') document.body.classList.remove('smiler-death');
+    // el CSS de controles táctiles/aviso de orientación cuelga de estas
+    // clases en <body> (game-active, card-active) — sin esto #touch-controls
+    // se queda en display:none para siempre pese al media query pointer:coarse
+    document.body.classList.toggle('game-active', name === 'game');
+    document.body.classList.toggle('card-active', name === 'card');
     // fundido cosmético; el swap de display es SÍNCRONO (el selftest lo exige)
     const fade = $('fade');
     if (fade && !window.NOFX) {

@@ -73,6 +73,7 @@
     <div id="game-wrap">
       <canvas id="gl-canvas" width="960" height="600" style="display:none"></canvas>
       <canvas id="game-canvas" width="960" height="600"></canvas>
+      <button id="btn-esc" title="Ajustes (ESC)"></button>
       <button id="btn-log" title="Registro completo (L)"></button>
       <div id="log-panel" style="display:none">
         <h3><span data-icon="pergamino" data-icon-size="14"></span> Registro</h3>
@@ -154,11 +155,14 @@
   </div>
 
   <div id="touch-controls" aria-label="Controles táctiles">
-    <div class="touch-dpad">
-      <button data-touch="up">▲</button>
-      <button data-touch="left">◀</button>
-      <button data-touch="down">▼</button>
-      <button data-touch="right">▶</button>
+    <div id="touch-joystick" class="touch-joystick" aria-label="Movimiento">
+      <div class="joy-base"><div class="joy-stick"></div></div>
+    </div>
+    <div id="touch-dpad" class="touch-dpad">
+      <button data-dir="up">▲</button>
+      <button data-dir="left">◀</button>
+      <button data-dir="down">▼</button>
+      <button data-dir="right">▶</button>
     </div>
     <div class="touch-actions">
       <button data-touch="q"><span data-icon="mano" data-icon-size="22"></span></button>
