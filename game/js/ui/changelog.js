@@ -69,7 +69,7 @@
       'Arreglo definitivo del lag al moverte: tu ordenador calcula tu movimiento y el servidor solo lo comprueba.',
     ] },
     { v: 'v23', cambios: [
-      'Meses de ajuste fino de la red: menos tirones al moverte y mejor sincronización con otros jugadores.',
+      'Varias tandas de ajuste fino de la red: menos tirones al moverte y mejor sincronización con otros jugadores.',
       'Puerta de vuelta automática al cruzar a un nivel nuevo.',
       'Menú de Ajustes con clave de guardián para moderación.',
     ] },
