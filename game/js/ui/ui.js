@@ -895,6 +895,10 @@
     }
   }
   $('btn-codex-close').onclick = () => toggleCodex(false);
+  if ($('btn-codex-close-top')) $('btn-codex-close-top').onclick = () => toggleCodex(false);
+  $('codex-panel').onclick = (ev) => {
+    if (ev.target === $('codex-panel')) toggleCodex(false);
+  };
 
   // ---------- changelog ----------
   let changelogVisible = false;
@@ -910,6 +914,10 @@
     }
   }
   $('btn-changelog-close').onclick = () => toggleChangelog(false);
+  if ($('btn-changelog-close-top')) $('btn-changelog-close-top').onclick = () => toggleChangelog(false);
+  $('changelog-panel').onclick = (ev) => {
+    if (ev.target === $('changelog-panel')) toggleChangelog(false);
+  };
 
   // ---------- fin ----------
   function showEnd(victoria, causa) {
