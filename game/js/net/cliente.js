@@ -532,6 +532,21 @@
     } catch (e) {}
   }
 
+  // El alta de botín tiene cadencia en el server (sala.loot descarta EN
+  // SILENCIO a <1.2 s del anterior): los envíos se espacian aquí para que un
+  // objeto ya consumido en este lado no se pierda por llegar demasiado seguido.
+  // 1.3 s da margen al jitter de red; lootPend cuenta los aún no enviados
+  // (ocupan hueco de mochila mientras viajan).
+  let lootT = 0, lootPend = 0;
+  function enviarLoot(id) {
+    const cuando = Math.max(Date.now(), lootT + 1300);
+    lootT = cuando;
+    const espera = cuando - Date.now();
+    if (espera <= 0) { enviar({ t: 'loot', id }); return; }
+    lootPend++;
+    setTimeout(() => { lootPend--; enviar({ t: 'loot', id }); }, espera);
+  }
+
   // ESPACIO sobre un contenedor sin registrar: TODO local (dado, botín,
   // sonido); al servidor solo viaja el alta del objeto encontrado
   function registrarLocal(w) {
@@ -546,12 +561,12 @@
         const pool = poolCajas(w);
         const id = pool[Math.min(pool.length - 1,
           Math.floor((d - 14) / 7 * pool.length + Math.floor(Math.random() * 3)))];
-        if ((w.player.inv || []).length >= 6) {
+        if ((w.player.inv || []).length + lootPend >= 6) {
           w.log(`Dado: ${d}. Hay algo útil… pero no te cabe nada más.`, 'event');
         } else {
           w.log(`Dado: ${d}. Encuentras: ${w.data.objects[id].nombre}.`, 'good');
           if (window.Effects) Effects.flash(w.player.x, w.player.y, '#ffe9a0');
-          enviar({ t: 'loot', id }); // el server valida cadencia y hueco
+          enviarLoot(id); // el server revalida hueco al recibirlo
         }
       } else if (d >= 7) {
         w.log(`Dado: ${d}. Vacío. Solo polvo y papel amarillento.`, 'event');
@@ -574,14 +589,14 @@
       const d = Fisica.dist(it.x, it.y, w.player.x, w.player.y);
       if (it.recien) { if (d > 0.8) it.recien = false; continue; }
       if (d >= 0.5) continue;
-      if ((w.player.inv || []).length >= 6) continue; // sin hueco: se queda
+      if ((w.player.inv || []).length + lootPend >= 6) continue; // sin hueco: se queda
       it.taken = true;
       w.itemsVersion = (w.itemsVersion || 0) + 1;
       const def = w.data.objects[it.id];
       w.log(`Recoges: ${def ? def.nombre : it.id}.`, 'good');
       if (window.Sfx) Sfx.play('recoger');
-      enviar({ t: 'loot', id: it.id });
-      break; // uno por vez (la cadencia del server manda)
+      enviarLoot(it.id);
+      break; // uno por escaneo
     }
   }
 
