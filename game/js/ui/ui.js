@@ -71,7 +71,7 @@
   $('btn-log-close').onclick = () => toggleLog(false);
   if (window.Icons) Icons.set($('btn-log'), 'pergamino', 15);
 
-  // ---------- HUD (v15: limpio y contextual — manos + mochila, sin barras) ----------
+  // ---------- HUD (v15+: limpio y contextual — manos, equipo y mochila) ----------
   const ICONOS_INV = {
     agua_almendras: 'refresco', botiquin: 'botiquin', linterna: 'linterna',
     chaqueta: 'chaqueta', amuleto: 'cuadro', llave_nivel: 'llave',
@@ -97,11 +97,11 @@
   function updateHUD() {
     if (!world.player || !world.level) return;
     renderManos();
+    renderEquipo();
     renderMoodles();
     renderDebugStats();
     if ($('backpack-panel').style.display !== 'none') {
       renderBackpack();
-      renderEquipo();
       renderEfectos();
     }
   }
@@ -229,7 +229,11 @@
   }
 
   function highlightSlots(active, itemId) {
-    for (const id of ['bp-mano-0', 'bp-mano-1', 'mano-0', 'mano-1', 'eq-cara', 'eq-cuerpo', 'eq-pies']) {
+    for (const id of [
+      'bp-mano-0', 'bp-mano-1', 'mano-0', 'mano-1',
+      'eq-cara', 'eq-cuerpo', 'eq-pies',
+      'hud-eq-cara', 'hud-eq-cuerpo', 'hud-eq-pies',
+    ]) {
       const el = $(id);
       if (el) el.classList.remove('slot-highlight-valid');
     }
@@ -237,8 +241,10 @@
     const def = world.data.objects[itemId];
     if (!def) return;
     if (def.equipo) {
-      const el = $('eq-' + def.equipo);
-      if (el) el.classList.add('slot-highlight-valid');
+      for (const id of ['eq-' + def.equipo, 'hud-eq-' + def.equipo]) {
+        const el = $(id);
+        if (el) el.classList.add('slot-highlight-valid');
+      }
     } else {
       for (const id of ['bp-mano-0', 'bp-mano-1', 'mano-0', 'mano-1']) {
         const el = $(id);
@@ -292,24 +298,30 @@
   }
 
   // ---------- equipamiento vestible (v20): cara / cuerpo / pies ----------
+  function pintarRanuraEquipo(el, tipo, objetoId, enHud) {
+    if (!el) return;
+    el.innerHTML = '';
+    el.classList.toggle('puesto', !!objetoId);
+    if (objetoId) {
+      const def = world.data.objects[objetoId];
+      if (window.Icons) el.appendChild(Icons.img(ICONOS_INV[objetoId] || 'interrogante', 26));
+      el.title = enHud ? `${def.nombre} (${tipo})` : `${def.nombre} (clic: quitártelo)`;
+    } else {
+      const ph = document.createElement('span');
+      ph.className = 'eq-ph';
+      ph.textContent = tipo;
+      el.appendChild(ph);
+      el.title = enHud
+        ? `${tipo}: no llevas nada`
+        : `Ranura de ${tipo} (arrastra aquí una prenda)`;
+    }
+  }
   function renderEquipo() {
     const eq = world.player.equipo || {};
     for (const tipo of ['cara', 'cuerpo', 'pies']) {
-      const el = $('eq-' + tipo);
-      if (!el) continue;
-      el.innerHTML = '';
-      el.classList.toggle('puesto', !!eq[tipo]);
-      if (eq[tipo]) {
-        const def = world.data.objects[eq[tipo]];
-        if (window.Icons) el.appendChild(Icons.img(ICONOS_INV[eq[tipo]] || 'interrogante', 26));
-        el.title = `${def.nombre} (clic: quitártelo)`;
-      } else {
-        const ph = document.createElement('span');
-        ph.className = 'eq-ph';
-        ph.textContent = tipo;
-        el.appendChild(ph);
-        el.title = `Ranura de ${tipo} (arrastra aquí una prenda)`;
-      }
+      const id = eq[tipo];
+      pintarRanuraEquipo($('eq-' + tipo), tipo, id, false);
+      pintarRanuraEquipo($('hud-eq-' + tipo), tipo, id, true);
     }
   }
 

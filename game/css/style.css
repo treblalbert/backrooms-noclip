@@ -176,11 +176,20 @@ input[type="range"]::-moz-range-thumb {
 /* v15: HUD limpio — solo manos + mochila (todo lo demás es contextual) */
 #hud-manos { position: absolute; right: 14px; bottom: 14px; display: flex;
   gap: 8px; align-items: center; }
+#hud-equipo { position: absolute; left: 14px; bottom: 14px; display: flex;
+  flex-direction: column; gap: 8px; align-items: center; }
 .mano-slot { width: 48px; height: 48px; background: rgba(10,9,6,.72);
   border: 1px solid var(--borde); border-bottom-width: 3px; position: relative;
   cursor: pointer; color: #55503f; font-size: 18px; overflow: hidden; }
 .mano-slot:hover { border-color: var(--amarillo-osc); }
 .mano-slot.activa { border-color: var(--amarillo); box-shadow: 0 0 10px rgba(217,198,110,.35); }
+.eq-hud-slot { width: 48px; height: 48px; background: rgba(10,9,6,.72);
+  border: 1px solid var(--borde); border-bottom-width: 3px; position: relative;
+  display: flex; align-items: center; justify-content: center; color: #55503f;
+  font-size: 18px; overflow: hidden; }
+.eq-hud-slot:hover { border-color: var(--amarillo-osc); }
+.eq-hud-slot.puesto { border-color: var(--amarillo); box-shadow: 0 0 10px rgba(217,198,110,.35); }
+.eq-hud-slot .eq-ph { font-size: 10px; letter-spacing: .4px; }
 /* v16: mano pixel-art de fondo (espejada según el lado) + objeto encima */
 .mano-img { position: absolute; bottom: 1px; left: 50%; margin-left: -15px; opacity: .95; }
 .mano-slot.vacia .mano-img { opacity: .3; }
@@ -299,7 +308,7 @@ body.fs #game-canvas, body.fs #gl-canvas { border: none; box-shadow: none; }
 #title-net { margin: 8px auto 0; max-width: 440px; color: #e88a7a;
   font-size: 14px; line-height: 1.4; }
 /* v23: barras de guardián (salud/comida/bebida/cordura) — abajo-izquierda */
-#debug-stats { position: absolute; left: 14px; bottom: 14px; display: flex;
+#debug-stats { position: absolute; left: 14px; bottom: 182px; display: flex;
   flex-direction: column; gap: 4px; background: rgba(10,9,6,.72);
   border: 1px solid var(--borde); padding: 8px 10px; pointer-events: none; }
 .dbg-fila { display: flex; align-items: center; gap: 8px; font-size: 12px; }
@@ -370,7 +379,7 @@ body.fs #game-canvas, body.fs #gl-canvas { border: none; box-shadow: none; }
 
 @media (pointer: coarse) {
   body.game-active #touch-controls { display: flex; }
-  #hud-manos { display: none; }
+  #hud-manos, #hud-equipo { display: none; }
   #screen-game { align-items: center; justify-content: center; overflow: hidden; }
   #game-wrap { max-width: 100vw; max-height: calc(var(--vh, 1vh) * 100); overflow: hidden; }
   #btn-esc { display: flex; top: max(8px, env(safe-area-inset-top)); left: max(8px, env(safe-area-inset-left)); }
@@ -547,4 +556,3 @@ details.cdx > div, details.cdx > ol { padding: 6px 14px 12px; }
   background: rgba(217, 198, 110, 0.12) !important;
   transition: border-color 0.15s, box-shadow 0.15s, background-color 0.15s;
 }
-
